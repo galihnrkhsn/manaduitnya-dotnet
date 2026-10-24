@@ -1,0 +1,72 @@
+
+# ==============================
+# .NET Build Output
+# ==============================
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rtifacts/
+publish/
+TestResults/
+
+# ==============================
+# Visual Studio
+# ==============================
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ==============================
+# Visual Studio Code (optional)
+# ==============================
+.vscode/
+
+# ==============================
+# Environment & Secrets
+# ==============================
+.env
+.env.*
+!.env.example
+!.env.template
+
+appsettings.Development.json
+appsettings.Local.json
+
+# Certificates & Private Keys
+*.pfx
+*.p12
+*.key
+*.pem
+
+# ==============================
+# Logs
+# ==============================
+*.log
+logs/
+
+# ==============================
+# OS Files
+# ==============================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==============================
+# Temporary Files
+# ==============================
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# ==============================
+# Coverage Reports
+# ==============================
+coverage/
+coverage.*

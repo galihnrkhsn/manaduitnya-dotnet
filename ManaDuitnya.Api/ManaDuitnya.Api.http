@@ -22,3 +22,8 @@ Authorization: Bearer {{login.response.body.accessToken}}
 GET {{baseUrl}}/transactions?from=2026-10-01&to=2026-10-30
 Accept: application/json
 Authorization: Bearer {{login.response.body.accessToken}}
+
+###
+GET {{baseUrl}}/wallets
+Accept: application/json
+Authorization: Bearer {{login.response.body.accessToken}}

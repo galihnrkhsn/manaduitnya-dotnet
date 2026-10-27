@@ -4,19 +4,19 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using ManaDuitnya.Api.Services;
-
-var builder = WebApplication.CreateBuilder(args);
+using ManaDuitnya.Api.Converters;
 
 DefaultTypeMap.MatchNamesWithUnderscores = true;
 
-builder.Services.AddControllers();
+var builder = WebApplication.CreateBuilder(args);
+var jwt     = builder.Configuration.GetSection("Jwt");
 
+
+builder.Services.AddControllers()
+    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new WibDateTimeConverter()));
 builder.Services.AddNpgsqlDataSource(builder.Configuration.GetConnectionString("Default")!);
-
 builder.Services.AddScoped<TransactionRepository>();
-
-var jwt = builder.Configuration.GetSection("Jwt");
-
+builder.Services.AddScoped<WalletRepository>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
 {
     o.MapInboundClaims = false;

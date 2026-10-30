@@ -15,8 +15,10 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
     private enum CategoryType
     {
         Income = 1,
-        Expense = 2
+        Expense = 2,
+        Transfer = 3
     }
+    
     [HttpGet]
     public async Task<IActionResult> List()
     {
@@ -89,6 +91,34 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
         } catch (PostgresException e) when (e.SqlState == "23505")
         {
             return Conflict(new { message = "Kategori sudah ada" });
+        }
+    }
+
+    [HttpPut("{id:long}")]
+    public async Task<IActionResult> Update(long id, CategoryDtos req)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+
+        try
+        {
+            var sql = await conn.ExecuteAsync(
+                """
+                    UPDATE categories
+                    SET name = @Name,
+                        type = @Type,
+                        color = @Color
+                    WHERE user_id = @userId
+                    AND id = @id
+                """,
+                new { req.Name, req.Type, req.Color, UserId, id }
+            );
+
+            return sql > 0
+                ? Ok(new { message = "Kategori berhasil diubah." })
+                : NotFound(new { message = "Kategori tidak ditemukan!" });
+        } catch (PostgresException e)
+        {
+            return Conflict(new {message = e.Message});
         }
     }
 

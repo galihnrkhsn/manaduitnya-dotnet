@@ -488,6 +488,7 @@ appsettings.Local.json
 appsettings.Production.json
 *.pfx
 *.key
+Test.http
 
 # VS Code (opsional, kalau tidak ingin membagikan pengaturan editor)
 .vscode/

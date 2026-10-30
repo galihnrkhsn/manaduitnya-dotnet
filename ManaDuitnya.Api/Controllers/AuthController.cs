@@ -24,7 +24,7 @@ public class AuthController(
         var hash    = BCrypt.Net.BCrypt.HashPassword(req.Password);
 
         try {
-            var user = await users.CreateAsync(req.Name.Trim(), email, hash);
+            var user = await users.Create(req.Name.Trim(), email, hash);
             return Ok(await IssueTokensAsync(user));
         } catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation) {
             return Conflict("Email sudah terdaftar");
@@ -34,7 +34,7 @@ public class AuthController(
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest req)
     {
-        var user = await users.GetByEmailAsync(req.Email.Trim().ToLowerInvariant());
+        var user = await users.GetByEmail(req.Email.Trim().ToLowerInvariant());
         if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash)) {
             return Unauthorized("Email atau password salah!");
         }
@@ -48,7 +48,7 @@ public class AuthController(
         var userId = await refreshTokens.ConsumeAsync(TokenService.Hash(req.RefreshToken));
         if (userId is null) return Unauthorized("Sesi tidak Valid, silahkan Login ulang!");
 
-        var user = await users.GetByIdAsync(userId.Value);
+        var user = await users.GetById(userId.Value);
         if (user is null) return  Unauthorized();
 
         return Ok(await IssueTokensAsync(user));

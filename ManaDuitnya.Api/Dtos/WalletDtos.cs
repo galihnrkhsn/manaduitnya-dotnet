@@ -5,7 +5,7 @@ namespace ManaDuitnya.Api.Dtos;
 
 public class WalletDtos
 {
-    [Required] public string Name { get; set; } = "";
+    [Required, StringLength(50)] public string Name { get; set; } = "";
     [Range(0, long.MaxValue)] public long InitialBalance { get; set; }
     public DateTime ArchivedAt { get; set; }
 }

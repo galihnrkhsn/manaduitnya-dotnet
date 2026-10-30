@@ -16,7 +16,7 @@ public class WalletController(WalletRepository repo) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List()
     {
-        return Ok(await repo.ListAsync(UserId));
+        return Ok(await repo.GetAll(UserId));
     }
     
     [HttpPost]
@@ -29,7 +29,7 @@ public class WalletController(WalletRepository repo) : ControllerBase
             InitialBalance = req.InitialBalance
         };
 
-        await repo.InsertAsync(wallet);
+        await repo.Create(wallet);
 
         return CreatedAtAction(nameof(GetById), new { id = wallet.Id }, wallet);
     }
@@ -37,22 +37,32 @@ public class WalletController(WalletRepository repo) : ControllerBase
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {
-        var wallet = await repo.GetByIdAsync(id, UserId);
+        var wallet = await repo.GetById(id, UserId);
         return wallet is null ? NotFound() : Ok(wallet);
     }
 
     [HttpGet("archived")]
     public async Task<IActionResult> GetArchived()
     {
-        return Ok(await repo.GetArchivedAsync());
+        return Ok(await repo.GetArchived());
     }
 
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> Archive(long id)
     {
-        var archived = await repo.ArchiveAsync(id, UserId);
+        var archived = await repo.Archive(id, UserId);
         return archived 
             ? Ok(new { message = "Dompet berhasil dihapus." })
+            : NotFound(new { message = "Dompet tidak ditemukan!" });
+    }
+
+    [HttpPut("{id:long}")]
+    public async Task<IActionResult> Update(long id, WalletDtos req)
+    {
+        req.Name = req.Name.Trim().ToUpper();
+        var updated = await repo.Update(id, UserId, req);
+        return updated
+            ? Ok(new { message = "Dompet berhasil diubah." })
             : NotFound(new { message = "Dompet tidak ditemukan!" });
     }
 }

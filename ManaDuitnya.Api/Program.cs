@@ -15,8 +15,6 @@ var jwt     = builder.Configuration.GetSection("Jwt");
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new WibDateTimeConverter()));
 builder.Services.AddNpgsqlDataSource(builder.Configuration.GetConnectionString("Default")!);
-builder.Services.AddScoped<TransactionRepository>();
-builder.Services.AddScoped<WalletRepository>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
 {
     o.MapInboundClaims = false;
@@ -33,9 +31,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
     };
 });
 builder.Services.AddAuthorization();
+builder.Services.AddSingleton<TokenService>();
+builder.Services.AddScoped<TransactionRepository>();
+builder.Services.AddScoped<WalletRepository>();
 builder.Services.AddScoped<UserRepository>();
 builder.Services.AddScoped<RefreshTokenRepository>();
-builder.Services.AddSingleton<TokenService>();
+builder.Services.AddScoped<BudgetRepository>();
 
 var app = builder.Build();
 app.UseAuthentication();

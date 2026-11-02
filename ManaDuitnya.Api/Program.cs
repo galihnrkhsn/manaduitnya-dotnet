@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using ManaDuitnya.Api.Services;
 using ManaDuitnya.Api.Converters;
+using ManaDuitnya.Api.Extensions;
 
 DefaultTypeMap.MatchNamesWithUnderscores = true;
 
@@ -37,8 +38,11 @@ builder.Services.AddScoped<WalletRepository>();
 builder.Services.AddScoped<UserRepository>();
 builder.Services.AddScoped<RefreshTokenRepository>();
 builder.Services.AddScoped<BudgetRepository>();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
 
 var app = builder.Build();
+app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

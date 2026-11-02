@@ -1,6 +1,5 @@
 using ManaDuitnya.Api.Dtos;
 using ManaDuitnya.Api.Entities;
-using ManaDuitnya.Api.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using ManaDuitnya.Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
@@ -13,7 +12,9 @@ namespace ManaDuitnya.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/transactions")]
-public class TransactionController(NpgsqlDataSource db) : ControllerBase
+public class TransactionController(
+    NpgsqlDataSource db
+) : ControllerBase
 {
     private long UserId => User.GetUserId();
 
@@ -91,8 +92,25 @@ public class TransactionController(NpgsqlDataSource db) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(CreateTransactionRequest req)
     {
-        if (req.Type == TransactionType.Transfer && req.ToWalletId is null)
-            return BadRequest("Transfer harus punya dompet tujuan.");
+        if (req.Amount <= 0)
+            return BadRequest("Nominal tidak boleh kosong");
+        if (req.Type == TransactionType.Transfer) {
+            if (req.ToWalletId is null)
+                return BadRequest("Transfer harus punya dompet tujuan.");
+
+            if (req.WalletId == req.ToWalletId) 
+                return BadRequest("Tidak Bisa Transfer ke dompet yang sama");
+
+            if (req.CategoryId is not null)
+                return BadRequest("Tranfer tidak boleh memiliki Kategori");
+        } else {
+            if (req.CategoryId is null)
+                return BadRequest("Kategori wajib diisi");
+
+            if (req.ToWalletId is not null)
+                return BadRequest("Dompet tujuan hanya boleh diisi untuk Transfer");
+        }
+
         await using var conn = await db.OpenConnectionAsync();
 
         var walletIds = new List<long> { req.WalletId };
@@ -100,19 +118,35 @@ public class TransactionController(NpgsqlDataSource db) : ControllerBase
         walletIds = walletIds.Distinct().ToList();
 
         var ownedWallets = await conn.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM wallets WHERE user_id = @userId, AND id = ANY(@ids)",
+            """
+                SELECT COUNT(*)
+                FROM wallets
+                WHERE user_id = @UserId
+                AND id = ANY(@walletIds)
+                AND archived_at IS NULL
+            """,
             new { UserId, walletIds }
         );
 
-        if (ownedWallets != walletIds.Count) return BadRequest("Dompet tidak Valid");
+        if (ownedWallets != walletIds.Count) 
+            return BadRequest("Dompet tidak Valid atau Sudah diarsipkan");
 
         if (req.CategoryId is not null) {
-            var categoryOk = await conn.ExecuteScalarAsync<bool>(
-                "SELECT EXIST (SELECT 1 FROM categories WHERE id = @id AND user_id = @userId)",
-                new { id = req.CategoryId.Value, userId = UserId }
+            var categoryType = await conn.QueryFirstOrDefaultAsync<short?>(
+                """
+                    SELECT type 
+                    FROM categories 
+                    WHERE id = @categoryId 
+                    AND user_id = @UserId 
+                    AND archived_at IS NULL
+                """,
+                new { categoryId = req.CategoryId.Value, UserId }
             );
+            if (categoryType is null)
+                return BadRequest("Kategori tidak valid atau sudah diarsipkan.");
 
-            if (!categoryOk) return BadRequest("Kategori Tidak Valid");
+            if (categoryType.Value != (short)req.Type)
+                return BadRequest("Tipe kategori harus sesuai dengan tipe Transaksi");
         }
 
         var t = new Transaction
@@ -141,7 +175,7 @@ public class TransactionController(NpgsqlDataSource db) : ControllerBase
             t.Uuid, t.UserId, t.WalletId, t.ToWalletId, t.CategoryId, Type = (short)t.Type, t.Amount, t.Note, t.TransactionDate
         });
 
-        return Created($"api/transactions/{t.Uuid}", t);
+        return CreatedAtAction(nameof(GetByUuid), new {uuid = t.Uuid}, t);
     }
 
     [HttpPut("{uuid:guid}")]
@@ -149,48 +183,40 @@ public class TransactionController(NpgsqlDataSource db) : ControllerBase
     {
         await using var conn = await db.OpenConnectionAsync();
 
-        try {
-            var sql = await conn.ExecuteAsync(
-                """
-                    UPDATE transactions 
-                    SET wallet_id = @WalletId,
-                        to_wallet_id = @ToWalletId,
-                        category_id = @CategoryId,
-                        type = @Type,
-                        amount = @Amount,
-                        note = @Note,
-                        transaction_date = @TransactionDate
-                    WHERE uuid = @uuid
-                    AND user_id = @UserId
-                """,
-                new { req.WalletId, req.ToWalletId, req.CategoryId, req.Type, req.Amount, req.Note, req.TransactionDate, uuid, UserId }
-            );
+        var sql = await conn.ExecuteAsync(
+            """
+                UPDATE transactions 
+                SET wallet_id = @WalletId,
+                    to_wallet_id = @ToWalletId,
+                    category_id = @CategoryId,
+                    type = @Type,
+                    amount = @Amount,
+                    note = @Note,
+                    transaction_date = @TransactionDate
+                WHERE uuid = @uuid
+                AND user_id = @UserId
+            """,
+            new { req.WalletId, req.ToWalletId, req.CategoryId, req.Type, req.Amount, req.Note, req.TransactionDate, uuid, UserId }
+        );
 
-            return sql > 0
-                ? Ok(new {message = "Berhasil ubah Transaksi"})
-                : NotFound(new {message = "Transaksi tidak ditemukan!"});
-        } catch (PostgresException e) {
-            return Conflict(new {e.Message});
-        }
+        return sql > 0
+            ? Ok(new {message = "Berhasil ubah Transaksi"})
+            : NotFound(new {message = "Transaksi tidak ditemukan!"});
     }
 
     [HttpDelete("{uuid:guid}")]
     public async Task<IActionResult> Delete(Guid uuid)
     {
         await using var conn = await db.OpenConnectionAsync();
-        try {
-            var sql = await conn.ExecuteAsync("""
-                DELETE FROM transactions
-                WHERE uuid = @uuid
-                AND user_id = @UserId
-            """,
-            new { uuid, UserId });
+        var sql = await conn.ExecuteAsync("""
+            DELETE FROM transactions
+            WHERE uuid = @uuid
+            AND user_id = @UserId
+        """,
+        new { uuid, UserId });
 
-            return sql > 0 
-                ? Ok(new {message = "Berhasil Hapus Transaksi"})
-                : NotFound(new {message = "Transaksi tidak ditemukan"});
-        } catch (PostgresException e) {
-            return Conflict(new {e.Message});
-        }
+        return sql > 0 
+            ? Ok(new {message = "Berhasil Hapus Transaksi"})
+            : NotFound(new {message = "Transaksi tidak ditemukan"});
     }
 }

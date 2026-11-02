@@ -74,24 +74,18 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
     {
         await using var conn = await db.OpenConnectionAsync();
 
-        try
-        {
-            var id = await conn.QueryFirstOrDefaultAsync<long?>(
-                """
-                    INSERT INTO categories
-                        (user_id, name, type, color, created_at)
-                    VALUES
-                        (@userId, @name, @type, @color, now())
-                    RETURNING id
-                """,
-                new { UserId, req.Name, req.Type, req.Color }
-            );
-            if (id is null) return BadRequest(new {message = "Error"});
-            return Created($"/categories/{id}", new {id});
-        } catch (PostgresException e) when (e.SqlState == "23505")
-        {
-            return Conflict(new { message = "Kategori sudah ada" });
-        }
+        var id = await conn.QueryFirstOrDefaultAsync<long?>(
+            """
+                INSERT INTO categories
+                    (user_id, name, type, color, created_at)
+                VALUES
+                    (@userId, @name, @type, @color, now())
+                RETURNING id
+            """,
+            new { UserId, req.Name, req.Type, req.Color }
+        );
+        if (id is null) return BadRequest(new {message = "Error"});
+        return Created($"/categories/{id}", new {id});
     }
 
     [HttpPut("{id:long}")]
@@ -99,61 +93,49 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
     {
         await using var conn = await db.OpenConnectionAsync();
 
-        try
-        {
-            var sql = await conn.ExecuteAsync(
-                """
-                    UPDATE categories
-                    SET name = @Name,
-                        color = @Color
-                    WHERE user_id = @userId
-                    AND id = @id
-                """,
-                new { req.Name, req.Color, UserId, id }
-            );
+        var sql = await conn.ExecuteAsync(
+            """
+                UPDATE categories
+                SET name = @Name,
+                    color = @Color
+                WHERE user_id = @userId
+                AND id = @id
+            """,
+            new { req.Name, req.Color, UserId, id }
+        );
 
-            return sql > 0
-                ? Ok(new { message = "Kategori berhasil diubah." })
-                : NotFound(new { message = "Kategori tidak ditemukan!" });
-        } catch (PostgresException e)
-        {
-            return Conflict(new {message = e.Message});
-        }
+        return sql > 0
+            ? Ok(new { message = "Kategori berhasil diubah." })
+            : NotFound(new { message = "Kategori tidak ditemukan!" });
     }
 
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> Archive(long id)
     {
         await using var conn = await db.OpenConnectionAsync();
-        try
-        {
-            var inUse = await conn.ExecuteScalarAsync<bool>(
-                """
-                    SELECT EXISTS (
-                        SELECT 1 FROM transactions
-                        WHERE category_id = @id AND user_id = @userId
-                    )
-                """,
-                new { id, UserId }
-            );
+        var inUse = await conn.ExecuteScalarAsync<bool>(
+            """
+                SELECT EXISTS (
+                    SELECT 1 FROM transactions
+                    WHERE category_id = @id AND user_id = @userId
+                )
+            """,
+            new { id, UserId }
+        );
 
-            if (inUse) return BadRequest(new {message = "Kategori masih digunakan pada transaksi"});
+        if (inUse) return BadRequest(new {message = "Kategori masih digunakan pada transaksi"});
 
-            var archived = await conn.ExecuteAsync(
-                """
-                    UPDATE categories SET archived_at = now(), updated_at = now()
-                    WHERE id = @id 
-                    AND user_id = @userId
-                    AND archived_at IS NULL
-                """,
-                new { id, UserId }
-            );
-            return archived > 0
-                ? Ok(new { message = "Kategori berhasil dihapus." })
-                : NotFound(new { message = "Kategori tidak ditemukan!" });
-        } catch (PostgresException e)
-        {
-            return Conflict(new {e.Message});
-        }
+        var archived = await conn.ExecuteAsync(
+            """
+                UPDATE categories SET archived_at = now(), updated_at = now()
+                WHERE id = @id 
+                AND user_id = @userId
+                AND archived_at IS NULL
+            """,
+            new { id, UserId }
+        );
+        return archived > 0
+            ? Ok(new { message = "Kategori berhasil dihapus." })
+            : NotFound(new { message = "Kategori tidak ditemukan!" });
     }
 }

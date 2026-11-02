@@ -105,12 +105,11 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
                 """
                     UPDATE categories
                     SET name = @Name,
-                        type = @Type,
                         color = @Color
                     WHERE user_id = @userId
                     AND id = @id
                 """,
-                new { req.Name, req.Type, req.Color, UserId, id }
+                new { req.Name, req.Color, UserId, id }
             );
 
             return sql > 0

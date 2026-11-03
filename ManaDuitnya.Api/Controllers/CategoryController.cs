@@ -105,8 +105,8 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
         );
 
         return sql > 0
-            ? Ok(new { message = "Kategori berhasil diubah." })
-            : NotFound(new { message = "Kategori tidak ditemukan!" });
+            ? Ok(new { message = "Sip, detail kategori sudah diperbarui. Biar lebih presisi nyatet jalur kemiskinannya." })
+            : NotFound(new { message = "Kategori nggak ketemu. Jangan ngadi-ngadi nyari pengeluaran fiktif." });
     }
 
     [HttpDelete("{id:long}")]
@@ -123,7 +123,9 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
             new { id, UserId }
         );
 
-        if (inUse) return BadRequest(new {message = "Kategori masih digunakan pada transaksi"});
+        if (inUse) return BadRequest(new {
+            message = "Eits, gagal archive! Mau ngilangin barang bukti keborosan ya? Kosongin/pindah dulu transaksinya."
+        });
 
         var archived = await conn.ExecuteAsync(
             """
@@ -135,7 +137,23 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
             new { id, UserId }
         );
         return archived > 0
-            ? Ok(new { message = "Kategori berhasil dihapus." })
-            : NotFound(new { message = "Kategori tidak ditemukan!" });
+            ? Ok(new { message = "Kategori sukses diarsipkan. Satu jalur keborosan resmi ditutup." })
+            : NotFound(new { message = "Kategori nggak ketemu. Jangan ngadi-ngadi nyari pengeluaran fiktif!" });
+    }
+
+    [HttpPut("{id:long}/unarchive")]
+    public async Task<IActionResult> UnArchive(long id)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        var sql = await conn.ExecuteAsync("""
+            UPDATE categories
+            SET archived_at = NULL
+            WHERE user_id = @UserId
+            AND id = @id
+        """, new {UserId, id});
+
+        return sql > 0
+            ? Ok(new {message = "Kategori diaktifkan kembali. Nggak jadi tobat jajan ini ya?"})
+            : NotFound(new {message = "Kategori nggak ketemu. Jangan ngadi-ngadi nyari pengeluaran fiktif."});
     }
 }

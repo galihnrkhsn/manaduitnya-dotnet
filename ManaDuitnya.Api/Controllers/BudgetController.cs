@@ -151,7 +151,36 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
         );
 
         return sql > 0
-            ? Ok(new {message = "Budget dihapus! Anggap aja bulan ini kita hidup tanpa rem."})
+            ? Ok(new {message = "Anggaran dihapus! Anggap aja bulan ini kita hidup tanpa rem."})
             : NotFound(new {message = "Waduh, anggaran gaib! Nggak ada di sistem."});        
+    }
+
+    [HttpPost("copy")]
+    public async Task<IActionResult> Copy([FromBody] CopyBudgetRequest req)
+    {
+        var fromMonth   = new DateOnly(req.FromMonth.Year, req.FromMonth.Month, 1);
+        var toMonth     = new DateOnly(req.ToMonth.Year, req.ToMonth.Month, 1);
+
+        if (fromMonth == toMonth)
+            return BadRequest(new {message = "Bulan asal dan bulan tujuan tidak boleh sama"});
+
+        await using var conn = await db.OpenConnectionAsync();
+        const string sql = """
+            INSERT INTO budgets
+                (user_id, category_id, month, amount, created_at)
+            SELECT user_id, category_id, @toMonth, amount, now()
+            FROM budgets
+            WHERE user_id = @UserId
+            AND month = @fromMonth
+            ON CONFLICT (user_id, category_id, month) DO NOTHING;
+        """;
+
+        var copiedRows = await conn.ExecuteAsync(sql, new {UserId, fromMonth, toMonth});
+
+        if (copiedRows == 0) {
+            return Ok(new {message = "Tidak ada anggaran dari bulan lalu yang dapat disalin"});
+        }
+
+        return Ok(new {message = $"Berhasil copy {copiedRows} anggaran. Semoga jebolnya nggak ikut ke-copy ya."});
     }
 }

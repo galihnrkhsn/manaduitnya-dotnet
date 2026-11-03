@@ -6,7 +6,7 @@ RUN dotnet restore "ManaDuitnya.Api/ManaDuitnya.Api.csproj"
 
 COPY . .
 WORKDIR "/src/ManaDuitnya.Api"
-RUN dotnet publish "ManaDuitnya.Api.csproj" -c Release -o /app/publish /p:UserAppHost=false
+RUN dotnet publish "ManaDuitnya.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

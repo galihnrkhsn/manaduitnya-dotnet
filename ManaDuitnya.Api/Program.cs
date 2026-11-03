@@ -53,4 +53,5 @@ app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapGet("/", () => "ManaDuitnya API is running!");
 app.Run();

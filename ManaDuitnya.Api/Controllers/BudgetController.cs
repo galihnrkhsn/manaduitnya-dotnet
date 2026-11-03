@@ -1,16 +1,15 @@
 using ManaDuitnya.Api.Dtos;
-using ManaDuitnya.Api.Entities;
-using ManaDuitnya.Api.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using ManaDuitnya.Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Npgsql;
 using Dapper;
+using ManaDuitnya.Api.Entities;
 
 namespace ManaDuitnya.Api.Controllers;
 [ApiController]
 [Authorize]
-[Route("api/budget")]
+[Route("api/budgets")]
 public class BudgetController(NpgsqlDataSource db) : ControllerBase
 {
     private long UserId => User.GetUserId();
@@ -20,86 +19,139 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
         Expense = 2
     }
 
+    private const string SelectBudget = """
+        SELECT b.uuid, b.user_id, b.category_id, b.month, b.amount, b.created_at, b.updated_at,
+            c.name as category_name, c.type as category_type, c.color as category_color
+        FROM budgets b
+        INNER JOIN categories c ON c.id = b.category_id
+        WHERE c.archived_at IS NULL
+        AND c.type = 2
+        AND b.user_id = @UserId
+    """;
+
     [HttpGet]
     public async Task<IActionResult> GetByMonth([FromQuery] DateOnly month)
     {
         await using var conn = await db.OpenConnectionAsync();
-        var row = await conn.QueryFirstOrDefaultAsync(
-            """
-                SELECT b.id, b.user_id, b.category_id, b.month, b.amount, b.created_at, b.updated_at,
-                    c.name as category_name, c.type as category_type, c.color as category_color
-                FROM budgets b
-                INNER JOIN categories c ON c.id = b.category_id
-                WHERE c.archived_at IS NULL
-                AND b.month = @month AND b.user_id = @userId
+        var rows = await conn.QueryAsync(
+            $"""
+                {SelectBudget}
+                AND b.month = @month 
+                ORDER BY c.name ASC
             """,
             new { month, UserId }
         );
 
-        if (row is null) return NotFound();
-
-        return Ok(new
+        var result = rows.Select(row => new
         {
-            id = row.id,
-            userId = row.user_id,
-            categoryId = row.category_id,
-            month = row.month,
-            amount = row.amount,
-            createdAt = row.created_at,
-            updatedAt = row.updated_at,
-            category_name = row.category_name,
-            category_type = ((CategoryType)(int)row.category_type).ToString()
+            uuid            = row.uuid,
+            userId          = row.user_id,
+            categoryId      = row.category_id,
+            month           = row.month,
+            amount          = row.amount,
+            createdAt       = row.created_at,
+            updatedAt       = row.updated_at,
+            category_name   = row.category_name,
+            category_type   = ((CategoryType)(int)row.category_type).ToString(),
+            category_color  = row.category_color 
         });
+
+        return Ok(result);
     }
 
-    public async Task<IActionResult> Create(BudgetDtos req)
+    [HttpPut]
+    public async Task<IActionResult> Upsert(BudgetDtos req)
     {
+        var normalizedMonth = new DateOnly(req.Month.Year, req.Month.Month, 1);
+
         await using var conn = await db.OpenConnectionAsync();
 
-        try
-        {
-            var id = await conn.QueryFirstOrDefaultAsync<long?>(
-                """
-                    INSERT INTO budgets 
-                        (user_id, category_id, month, amount, created_at, updated_at)
-                    VALUES
-                        (@userId, @categoryId, @month, @amoung, now(), now())
-                """,
-                new { UserId, req.CategoryId, req.Month, req.Amount }
-            );
+        var isCategoryValid = await conn.ExecuteScalarAsync<bool>("""
+            SELECT EXISTS (
+                SELECT 1 FROM categories 
+                WHERE id = @CategoryId 
+                AND user_id = @UserId 
+                AND type = 2
+                AND archived_at IS NULL
+            )
+        """, new {req.CategoryId, UserId});
 
-            if (id is null) return BadRequest(new {message = "Budget"});
-            return Created($"/budgets/{id}", new { id });
-        } catch (PostgresException e) when (e.SqlState == "23505")
+        if (!isCategoryValid) return BadRequest(new {
+            message = "Kategori nggak ketemu."
+        });
+
+        const string sql = """
+            INSERT INTO budgets
+                (user_id, category_id, month, amount, created_at)
+            VALUES
+                (@UserId, @CategoryId, @Month, @Amount, NOW())
+            ON CONFLICT (user_id, category_id, month)
+            DO UPDATE SET
+                amount = EXCLUDED.amount,
+                updated_at = now();
+        """;
+
+        var row = await conn.ExecuteAsync(sql, new
         {
-            return Conflict(new {message = "Budget Untuk Kategori dan bulan ini sudah ada"});
-        }
+            UserId,
+            CategoryId = req.CategoryId,
+            Month = normalizedMonth,
+            Amount = req.Amount
+        });
+
+        return row > 0
+            ? Ok(new {message = "Anggaran resmi ditetapkan! Mari kita lihat seberapa cepat nominal ini akan jebol."})
+            : NotFound(new {message = "Waduh, anggaran gaib! Nggak ada di sistem."});
     }
 
-    [HttpGet("{id:long}")]
-    public async Task<IActionResult> GetById(long id)
+    [HttpGet("{uuid:Guid}")]
+    public async Task<IActionResult> GetByUuid(Guid uuid)
     {
         await using var conn = await db.OpenConnectionAsync();
         var row = await conn.QueryFirstOrDefaultAsync(
-            """
-                SELECT id, user_id, category_id, month, amount, created_at
-                FROM budgets
-                WHERE id = @id
-                AND user_id = @userId
+            $"""
+                {SelectBudget}
+                AND b.uuid = @uuid
             """,
-            new { id, UserId }
+            new { UserId, uuid }
         );
 
-        if (row is null) return BadRequest(new {message = "Budget tidak ditemukan"});
+        if (row is null)
+            return NotFound(new {message = "Waduh, anggaran gaib! Nggak ada di sistem."});
 
-        return Ok(new
+        var result = new
         {
-            id = row.id,
-            userId = row.user_id,
-            categoryId = row.category_id,
-            month = row.month,
-            amount = row.amount,
-            createdAt = row.created_at,
-        });
+            id              = row.uuid,
+            userId          = row.user_id,
+            categoryId      = row.category_id,
+            month           = row.month,
+            amount          = row.amount,
+            createdAt       = row.created_at,
+            updatedAt       = row.updated_at,
+            category_name   = row.category_name,
+            category_type   = ((CategoryType)(int)row.category_type).ToString(),
+            category_color  = row.category_color 
+        };
+
+        return Ok(result);
+    }
+
+    [HttpDelete("{uuid:Guid}")]
+    public async Task<IActionResult> Delete(Guid uuid)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+
+        var sql = await conn.ExecuteAsync(
+            """
+                DELETE FROM budgets
+                WHERE user_id = @UserId
+                AND id = @uuid
+            """,
+            new {UserId, uuid}
+        );
+
+        return sql > 0
+            ? Ok(new {message = "Budget dihapus! Anggap aja bulan ini kita hidup tanpa rem."})
+            : NotFound(new {message = "Waduh, anggaran gaib! Nggak ada di sistem."});        
     }
 }

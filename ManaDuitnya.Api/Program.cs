@@ -33,11 +33,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 });
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<TokenService>();
-builder.Services.AddScoped<TransactionRepository>();
-builder.Services.AddScoped<WalletRepository>();
 builder.Services.AddScoped<UserRepository>();
 builder.Services.AddScoped<RefreshTokenRepository>();
-builder.Services.AddScoped<BudgetRepository>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 

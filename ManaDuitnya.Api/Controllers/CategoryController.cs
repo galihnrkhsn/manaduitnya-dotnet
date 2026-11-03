@@ -84,7 +84,7 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
             """,
             new { UserId, req.Name, req.Type, req.Color }
         );
-        if (id is null) return BadRequest(new {message = "Error"});
+        if (id is null) return BadRequest(new {message = "Gagal bikin kategori. Servernya aja lelah nyatet rencana keborosanmu."});
         return Created($"/categories/{id}", new {id});
     }
 

@@ -12,7 +12,6 @@ DefaultTypeMap.MatchNamesWithUnderscores = true;
 var builder = WebApplication.CreateBuilder(args);
 var jwt     = builder.Configuration.GetSection("Jwt");
 
-
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new WibDateTimeConverter()));
 builder.Services.AddNpgsqlDataSource(builder.Configuration.GetConnectionString("Default")!);

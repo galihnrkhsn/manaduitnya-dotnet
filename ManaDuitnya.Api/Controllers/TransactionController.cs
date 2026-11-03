@@ -27,14 +27,16 @@ public class TransactionController(
         [FromQuery] TransactionType? type, 
         [FromQuery] string? search
     ) {
-        var sql = new StringBuilder("""
-            SELECT uuid, user_id, wallet_id, to_wallet_id, category_id,
-                type, amount, note, transaction_date
-            FROM transactions
-            WHERE user_id = @userId
-            AND transaction_date >= @from
-            AND transaction_date < @to
-            """);
+        var sql = new StringBuilder(
+            """
+                SELECT uuid, user_id, wallet_id, to_wallet_id, category_id,
+                    type, amount, note, transaction_date
+                FROM transactions
+                WHERE user_id = @userId
+                AND transaction_date >= @from
+                AND transaction_date < @to
+            """
+        );
 
         var p = new DynamicParameters();
         p.Add("userId", UserId);

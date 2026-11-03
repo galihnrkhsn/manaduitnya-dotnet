@@ -4,7 +4,6 @@ using ManaDuitnya.Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Npgsql;
 using Dapper;
-using ManaDuitnya.Api.Entities;
 
 namespace ManaDuitnya.Api.Controllers;
 [ApiController]

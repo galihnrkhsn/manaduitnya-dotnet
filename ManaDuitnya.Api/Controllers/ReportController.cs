@@ -56,7 +56,7 @@ public class ReportController(NpgsqlDataSource db) : ControllerBase
                 CASE
                     WHEN t.type = 1 AND t.wallet_id = w.id THEN t.amount
                     WHEN t.type = 2 AND t.wallet_id = w.id THEN -t.amount
-                    WHEN t.type = 3 AND t.to_wallet_id = w.id THEN -t.amount
+                    WHEN t.type = 3 AND t.to_wallet_id = w.id THEN t.amount
                     WHEN t.type = 3 AND t.wallet_id = w.id THEN -t.amount
                     ELSE 0
                 END

@@ -164,7 +164,7 @@ public class ReportController(NpgsqlDataSource db) : ControllerBase
 
     public class RecentTransactionDto
     {
-        public long Id { get; set; }
+        public Guid Uuid { get; set; }
         public int Type { get; set; }
         public long Amount { get; set; }
         public DateTime TransactionDate { get; set; }

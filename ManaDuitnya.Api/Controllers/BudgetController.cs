@@ -29,16 +29,20 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
     """;
 
     [HttpGet]
-    public async Task<IActionResult> GetByMonth([FromQuery] DateOnly month)
+    public async Task<IActionResult> GetByMonth([FromQuery] DateOnly? month)
     {
+        var now             = DateTime.Today;
+        var Month           = month ?? new DateOnly(now.Year, now.Month, 1);
+        var MonthDateTime   = Month.ToDateTime(TimeOnly.MinValue);
+
         await using var conn = await db.OpenConnectionAsync();
         var rows = await conn.QueryAsync(
             $"""
                 {SelectBudget}
-                AND b.month = @month 
+                AND b.month = @Month 
                 ORDER BY c.name ASC
             """,
-            new { month, UserId }
+            new { Month, UserId }
         );
 
         var result = rows.Select(row => new

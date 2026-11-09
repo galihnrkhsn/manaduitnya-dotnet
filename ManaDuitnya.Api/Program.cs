@@ -27,7 +27,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         ValidateLifetime    = true,
         ValidateIssuerSigningKey    = true,
         IssuerSigningKey            = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!)),
-        ClockSkew                   = TimeSpan.FromSeconds(30)
+        ClockSkew                   = TimeSpan.Zero
     };
 });
 builder.Services.AddAuthorization();

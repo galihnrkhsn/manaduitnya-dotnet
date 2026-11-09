@@ -74,7 +74,8 @@ public class AuthController(
     private async Task<AuthResponse> IssueTokensAsync(User user)
     {
         var (raw, hash) = TokenService.NewRefreshToken();
-        var expires = DateTime.UtcNow.AddDays(config.GetValue<int>("Jwt:RefreshDays"));
+        // Npgsql 6+ requires DateTimeKind.Utc for timestamptz columns
+        var expires = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(config.GetValue<int>("Jwt:RefreshDays")), DateTimeKind.Utc);
         await refreshTokens.InsertAsync(user.Id, hash, expires);
 
         return new AuthResponse

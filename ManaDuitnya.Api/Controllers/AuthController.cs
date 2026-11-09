@@ -25,9 +25,10 @@ public class AuthController(
 
         try {
             var user = await users.Create(req.Name.Trim(), email, hash);
-            return Ok(await IssueTokensAsync(user));
+            if (user is null) return StatusCode(500, ApiResponse.Fail("Gagal membuat akun"));
+            return Ok(ApiResponse<AuthResponse>.Ok(await IssueTokensAsync(user), "Registrasi akun berhasil"));
         } catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation) {
-            return Conflict("Email sudah terdaftar");
+            return Conflict(ApiResponse.Fail("Email sudah terdaftar", "CONFLICT"));
         }
     }
 
@@ -36,22 +37,22 @@ public class AuthController(
     {
         var user = await users.GetByEmail(req.Email.Trim().ToLowerInvariant());
         if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash)) {
-            return Unauthorized("Email atau password salah!");
+            return Unauthorized(ApiResponse.Fail("Email atau password salah!", "UNAUTHORIZED"));
         }
 
-        return Ok(await IssueTokensAsync(user));
+        return Ok(ApiResponse<AuthResponse>.Ok(await IssueTokensAsync(user), "Login berhasil"));
     }
 
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(RefreshRequest req)
     {
         var userId = await refreshTokens.ConsumeAsync(TokenService.Hash(req.RefreshToken));
-        if (userId is null) return Unauthorized("Sesi tidak Valid, silahkan Login ulang!");
+        if (userId is null) return Unauthorized(ApiResponse.Fail("Sesi tidak valid, silahkan login ulang!", "UNAUTHORIZED"));
 
         var user = await users.GetById(userId.Value);
-        if (user is null) return  Unauthorized();
+        if (user is null) return Unauthorized(ApiResponse.Fail("User tidak ditemukan!", "UNAUTHORIZED"));
 
-        return Ok(await IssueTokensAsync(user));
+        return Ok(ApiResponse<AuthResponse>.Ok(await IssueTokensAsync(user), "Sesi berhasil diperbarui"));
     }
 
     [HttpPost("logout")]
@@ -63,14 +64,13 @@ public class AuthController(
 
     [Authorize]
     [HttpGet("me")]
-    public IActionResult Me() => Ok(new
+    public IActionResult Me() => Ok(ApiResponse<dynamic>.Ok(new
     {
         id      = User.FindFirst("sub")?.Value,
         name    = User.FindFirst("name")?.Value,
         email   = User.FindFirst("email")?.Value
-    });
+    }, "Data profil berhasil diambil"));
 
-    // Membuat sepasang token baru dan menyimpan hash refresh token ke database
     private async Task<AuthResponse> IssueTokensAsync(User user)
     {
         var (raw, hash) = TokenService.NewRefreshToken();
@@ -79,11 +79,12 @@ public class AuthController(
 
         return new AuthResponse
         {
-            AccessToken     = tokens.CreateAccessToken(user),
-            RefreshToken    = raw,
-            UserId          = user.Id,
-            Email           = user.Email,
-            Name            = user.Name
+            AccessToken           = tokens.CreateAccessToken(user),
+            RefreshToken          = raw,
+            UserId                = user.Id,
+            Email                 = user.Email,
+            Name                  = user.Name,
+            RefreshTokenExpiresAt = expires
         };
     }
 }

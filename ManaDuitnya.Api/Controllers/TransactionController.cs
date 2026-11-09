@@ -29,9 +29,11 @@ public class TransactionController(
     ) {
         var sql = new StringBuilder(
             """
-                SELECT uuid, user_id, wallet_id, to_wallet_id, category_id,
-                    type, amount, note, transaction_date
+                SELECT transactions.uuid, transactions.user_id, transactions.wallet_id, transactions.to_wallet_id, 
+                    transactions.category_id, transactions.type, transactions.amount, transactions.note, 
+                    transactions.transaction_date, categories.name as category_name
                 FROM transactions
+                INNER JOIN categories ON categories.id = transactions.categoryId
                 WHERE user_id = @userId
                 AND transaction_date >= @from
                 AND transaction_date < @to

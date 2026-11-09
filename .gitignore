@@ -492,3 +492,5 @@ Test.http
 
 # VS Code (opsional, kalau tidak ingin membagikan pengaturan editor)
 .vscode/
+.cline
+AGENTS.md

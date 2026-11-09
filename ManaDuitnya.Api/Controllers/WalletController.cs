@@ -1,14 +1,13 @@
 using ManaDuitnya.Api.Dtos;
 using ManaDuitnya.Api.Entities;
-using ManaDuitnya.Api.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using ManaDuitnya.Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Npgsql;
 using Dapper;
 
-
 namespace ManaDuitnya.Api.Controllers;
+
 [ApiController]
 [Authorize]
 [Route("api/wallets")]
@@ -26,7 +25,7 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
             new { UserId }
         );
 
-        return Ok(rows);
+        return Ok(ApiResponse<IEnumerable<dynamic>>.Ok(rows, "Daftar dompet berhasil diambil"));
     }
     
     [HttpPost]
@@ -44,12 +43,13 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
                 (user_id, name, initial_balance, created_at, updated_at)
             VALUES
                 (@userId, @name, @initialBalance, now(), now())
+            RETURNING id
         """;
 
         await using var conn = await db.OpenConnectionAsync();
         wallet.Id = await conn.ExecuteScalarAsync<long>(sql, wallet);
 
-        return CreatedAtAction(nameof(GetById), new { id = wallet.Id }, wallet);
+        return CreatedAtAction(nameof(GetById), new { id = wallet.Id }, ApiResponse<Wallet>.Ok(wallet, "Dompet berhasil dibuat"));
     }
 
     [HttpGet("{id:long}")]
@@ -57,7 +57,9 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
     {
         await using var conn = await db.OpenConnectionAsync();
         var row = await conn.QuerySingleOrDefaultAsync($"{SelectWallet} WHERE id = @id AND user_id = @userId", new { id, UserId });
-        return row is null ? NotFound() : Ok(row);
+        return row is null 
+            ? NotFound(ApiResponse.Fail("Dompet tidak ditemukan", "NOT_FOUND")) 
+            : Ok(ApiResponse<dynamic>.Ok(row, "Detail dompet berhasil diambil"));
     }
 
     [HttpPut("{id:long}")]
@@ -77,8 +79,8 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
         );
 
         return row > 0
-            ? Ok(new {message = "Update dompet sukses! Tampilannya aja yang baru, isinya tetep segitu-gitu aja."})
-            : NotFound(new {message = "Waduh, dompet gaib! Nggak ketemu di sistem."});
+            ? Ok(ApiResponse.Ok("Update dompet sukses! Tampilannya aja yang baru, isinya tetep segitu-gitu aja."))
+            : NotFound(ApiResponse.Fail("Waduh, dompet gaib! Nggak ketemu di sistem.", "NOT_FOUND"));
     }
 
     [HttpGet("archived")]
@@ -93,7 +95,7 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
         """,
         new {UserId});
 
-        return Ok(row);
+        return Ok(ApiResponse<IEnumerable<dynamic>>.Ok(row, "Daftar dompet terarsip berhasil diambil"));
     }
 
     [HttpDelete("{id:long}")]
@@ -106,13 +108,13 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
                 UPDATE wallets
                 SET archived_at = now(), updated_at = now()
                 WHERE id = @id AND user_id = @userId AND archived_at IS NULL
-            """
-            , new { id, UserId }
+            """, 
+            new { id, UserId }
         );
 
         return sql > 0
-            ? Ok(new { message = "Dompet masuk arsip. Istirahat dulu dia, capek dikuras terus." })
-            : NotFound(new { message = "Waduh, dompet gaib! Nggak ketemu di sistem." });
+            ? Ok(ApiResponse.Ok("Dompet masuk arsip. Istirahat dulu dia, capek dikuras terus."))
+            : NotFound(ApiResponse.Fail("Waduh, dompet gaib! Nggak ketemu di sistem.", "NOT_FOUND"));
     }
 
     [HttpPut("unarchive/{id:long}")]
@@ -128,7 +130,7 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
         """, new {id, UserId});
 
         return sql > 0
-            ? Ok(new {message = "Dompet kembali aktif! Siap dikuras lagi."})
-            : NotFound(new {message = "Waduh, dompet gaib! Nggak ketemu di sistem."});
+            ? Ok(ApiResponse.Ok("Dompet kembali aktif! Siap dikuras lagi."))
+            : NotFound(ApiResponse.Fail("Waduh, dompet gaib! Nggak ketemu di sistem.", "NOT_FOUND"));
     }
 }

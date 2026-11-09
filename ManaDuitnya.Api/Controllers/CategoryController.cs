@@ -6,6 +6,7 @@ using Npgsql;
 using Dapper;
 
 namespace ManaDuitnya.Api.Controllers;
+
 [ApiController]
 [Authorize]
 [Route("api/categories")]
@@ -25,7 +26,7 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
         await using var conn = await db.OpenConnectionAsync();
         var rows = await conn.QueryAsync(
             """
-                SELECT id, user_id, name,type, color, created_at, updated_at
+                SELECT id, user_id, name, type, color, created_at, updated_at
                 FROM categories
                 WHERE user_id = @userId
                 AND archived_at IS NULL
@@ -33,7 +34,7 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
             new { UserId }
         );
 
-        return Ok(rows.Select(r => new
+        var result = rows.Select(r => new
         {
             id = r.id,
             name = r.name,
@@ -41,7 +42,9 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
             color = r.color,
             created_at = r.created_at,
             updated_at = r.updated_at
-        }));
+        });
+
+        return Ok(ApiResponse<IEnumerable<dynamic>>.Ok(result, "Daftar kategori berhasil diambil"));
     }
 
     [HttpGet("{id:long}")]
@@ -58,18 +61,20 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
             new { id, UserId }
         );
 
-        if (row is null) return NotFound();
+        if (row is null) 
+            return NotFound(ApiResponse.Fail("Kategori tidak ditemukan", "NOT_FOUND"));
 
-        return Ok(new
+        return Ok(ApiResponse<dynamic>.Ok(new
         {
             id = row.id,
             name = row.name,
             type = row.type,
             color = row.color,
             created_at = row.created_at
-        });
+        }, "Detail kategori berhasil diambil"));
     }
 
+    [HttpPost]
     public async Task<IActionResult> Create(CategoryDtos req)
     {
         await using var conn = await db.OpenConnectionAsync();
@@ -84,8 +89,11 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
             """,
             new { UserId, req.Name, req.Type, req.Color }
         );
-        if (id is null) return BadRequest(new {message = "Gagal bikin kategori. Servernya aja lelah nyatet rencana keborosanmu."});
-        return Created($"/categories/{id}", new {id});
+
+        if (id is null) 
+            return BadRequest(ApiResponse.Fail("Gagal bikin kategori. Servernya aja lelah nyatet rencana keborosanmu.", "BAD_REQUEST"));
+
+        return Created($"/api/categories/{id}", ApiResponse<object>.Ok(new { id }, "Kategori berhasil dibuat"));
     }
 
     [HttpPut("{id:long}")]
@@ -105,8 +113,8 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
         );
 
         return sql > 0
-            ? Ok(new { message = "Sip, detail kategori sudah diperbarui. Biar lebih presisi nyatet jalur kemiskinannya." })
-            : NotFound(new { message = "Kategori nggak ketemu. Jangan ngadi-ngadi nyari pengeluaran fiktif." });
+            ? Ok(ApiResponse.Ok("Sip, detail kategori sudah diperbarui. Biar lebih presisi nyatet jalur kemiskinannya."))
+            : NotFound(ApiResponse.Fail("Kategori nggak ketemu. Jangan ngadi-ngadi nyari pengeluaran fiktif.", "NOT_FOUND"));
     }
 
     [HttpDelete("{id:long}")]
@@ -123,9 +131,10 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
             new { id, UserId }
         );
 
-        if (inUse) return BadRequest(new {
-            message = "Eits, gagal archive! Mau ngilangin barang bukti keborosan ya? Kosongin/pindah dulu transaksinya."
-        });
+        if (inUse) return BadRequest(ApiResponse.Fail(
+            "Eits, gagal archive! Mau ngilangin barang bukti keborosan ya? Kosongin/pindah dulu transaksinya.", 
+            "CATEGORY_IN_USE"
+        ));
 
         var archived = await conn.ExecuteAsync(
             """
@@ -137,8 +146,8 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
             new { id, UserId }
         );
         return archived > 0
-            ? Ok(new { message = "Kategori sukses diarsipkan. Satu jalur keborosan resmi ditutup." })
-            : NotFound(new { message = "Kategori nggak ketemu. Jangan ngadi-ngadi nyari pengeluaran fiktif!" });
+            ? Ok(ApiResponse.Ok("Kategori sukses diarsipkan. Satu jalur keborosan resmi ditutup."))
+            : NotFound(ApiResponse.Fail("Kategori nggak ketemu. Jangan ngadi-ngadi nyari pengeluaran fiktif!", "NOT_FOUND"));
     }
 
     [HttpPut("{id:long}/unarchive")]
@@ -153,7 +162,7 @@ public class CategoryController(NpgsqlDataSource db) : ControllerBase
         """, new {UserId, id});
 
         return sql > 0
-            ? Ok(new {message = "Kategori diaktifkan kembali. Nggak jadi tobat jajan ini ya?"})
-            : NotFound(new {message = "Kategori nggak ketemu. Jangan ngadi-ngadi nyari pengeluaran fiktif."});
+            ? Ok(ApiResponse.Ok("Kategori diaktifkan kembali. Nggak jadi tobat jajan ini ya?"))
+            : NotFound(ApiResponse.Fail("Kategori nggak ketemu. Jangan ngadi-ngadi nyari pengeluaran fiktif.", "NOT_FOUND"));
     }
 }

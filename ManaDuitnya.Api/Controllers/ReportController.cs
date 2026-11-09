@@ -121,7 +121,7 @@ public class ReportController(NpgsqlDataSource db) : ControllerBase
             """;
         var recentTransactions = (await conn.QueryAsync<RecentTransactionDto>(recentSql, new { UserId })).ToList();
 
-        return Ok(new
+        var result = new
         {
             quotes             = Quotes,
             wallets,
@@ -130,7 +130,9 @@ public class ReportController(NpgsqlDataSource db) : ControllerBase
             expense,
             alerts,
             recentTransactions
-        });
+        };
+
+        return Ok(ApiResponse<dynamic>.Ok(result, "Ringkasan laporan berhasil diambil"));
     }
     private static readonly string[] Quotes =
     [

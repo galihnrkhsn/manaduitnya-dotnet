@@ -59,7 +59,7 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
             category_color  = row.category_color 
         });
 
-        return Ok(result);
+        return Ok(ApiResponse<IEnumerable<dynamic>>.Ok(result, "Daftar anggaran berhasil diambil"));
     }
 
     [HttpPut]
@@ -79,9 +79,8 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
             )
         """, new {req.CategoryId, UserId});
 
-        if (!isCategoryValid) return BadRequest(new {
-            message = "Kategori nggak ketemu."
-        });
+        if (!isCategoryValid) 
+            return BadRequest(ApiResponse.Fail("Kategori nggak ketemu.", "VALIDATION_ERROR"));
 
         const string sql = """
             INSERT INTO budgets
@@ -103,8 +102,8 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
         });
 
         return row > 0
-            ? Ok(new {message = "Anggaran resmi ditetapkan! Mari kita lihat seberapa cepat nominal ini akan jebol."})
-            : NotFound(new {message = "Waduh, anggaran gaib! Nggak ada di sistem."});
+            ? Ok(ApiResponse.Ok("Anggaran resmi ditetapkan! Mari kita lihat seberapa cepat nominal ini akan jebol."))
+            : NotFound(ApiResponse.Fail("Waduh, anggaran gaib! Nggak ada di sistem.", "NOT_FOUND"));
     }
 
     [HttpGet("{uuid:Guid}")]
@@ -120,7 +119,7 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
         );
 
         if (row is null)
-            return NotFound(new {message = "Waduh, anggaran gaib! Nggak ada di sistem."});
+            return NotFound(ApiResponse.Fail("Waduh, anggaran gaib! Nggak ada di sistem.", "NOT_FOUND"));
 
         var result = new
         {
@@ -136,7 +135,7 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
             category_color  = row.category_color 
         };
 
-        return Ok(result);
+        return Ok(ApiResponse<dynamic>.Ok(result, "Detail anggaran berhasil diambil"));
     }
 
     [HttpDelete("{uuid:Guid}")]
@@ -154,8 +153,8 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
         );
 
         return sql > 0
-            ? Ok(new {message = "Anggaran dihapus! Anggap aja bulan ini kita hidup tanpa rem."})
-            : NotFound(new {message = "Waduh, anggaran gaib! Nggak ada di sistem."});        
+            ? Ok(ApiResponse.Ok("Anggaran dihapus! Anggap aja bulan ini kita hidup tanpa rem."))
+            : NotFound(ApiResponse.Fail("Waduh, anggaran gaib! Nggak ada di sistem.", "NOT_FOUND"));        
     }
 
     [HttpPost("copy")]
@@ -165,7 +164,7 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
         var toMonth     = new DateOnly(req.ToMonth.Year, req.ToMonth.Month, 1);
 
         if (fromMonth == toMonth)
-            return BadRequest(new {message = "Bulan asal dan bulan tujuan tidak boleh sama"});
+            return BadRequest(ApiResponse.Fail("Bulan asal dan bulan tujuan tidak boleh sama", "VALIDATION_ERROR"));
 
         await using var conn = await db.OpenConnectionAsync();
         const string sql = """
@@ -181,9 +180,9 @@ public class BudgetController(NpgsqlDataSource db) : ControllerBase
         var copiedRows = await conn.ExecuteAsync(sql, new {UserId, fromMonth, toMonth});
 
         if (copiedRows == 0) {
-            return Ok(new {message = "Tidak ada anggaran dari bulan lalu yang dapat disalin"});
+            return Ok(ApiResponse.Ok("Tidak ada anggaran dari bulan lalu yang dapat disalin"));
         }
 
-        return Ok(new {message = $"Berhasil copy {copiedRows} anggaran. Semoga jebolnya nggak ikut ke-copy ya."});
+        return Ok(ApiResponse.Ok($"Berhasil copy {copiedRows} anggaran. Semoga jebolnya nggak ikut ke-copy ya."));
     }
 }

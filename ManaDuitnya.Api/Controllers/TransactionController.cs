@@ -20,8 +20,8 @@ public class TransactionController(
 
     [HttpGet]
     public async Task<IActionResult> List(
-        [FromQuery] DateTime from, 
-        [FromQuery] DateTime to, 
+        [FromQuery] DateTime? from, 
+        [FromQuery] DateTime? to, 
         [FromQuery] long? walletId, 
         [FromQuery] long? categoryId, 
         [FromQuery] TransactionType? type, 
@@ -29,90 +29,122 @@ public class TransactionController(
     ) {
         var sql = new StringBuilder(
             """
-                SELECT transactions.uuid, transactions.user_id, transactions.wallet_id, transactions.to_wallet_id, 
-                    transactions.category_id, transactions.type, transactions.amount, transactions.note, 
-                    transactions.transaction_date, categories.name as category_name
+                SELECT 
+                    transactions.uuid, 
+                    transactions.user_id, 
+                    transactions.wallet_id, 
+                    transactions.to_wallet_id, 
+                    transactions.category_id, 
+                    transactions.type, 
+                    transactions.amount, 
+                    transactions.note, 
+                    transactions.transaction_date, 
+                    transactions.created_at,
+                    transactions.updated_at,
+                    categories.name AS category_name, 
+                    categories.color AS category_color
                 FROM transactions
-                INNER JOIN categories ON categories.id = transactions.categoryId
-                WHERE user_id = @userId
-                AND transaction_date >= @from
-                AND transaction_date < @to
+                LEFT JOIN categories ON categories.id = transactions.category_id
+                WHERE transactions.user_id = @userId
             """
         );
 
         var p = new DynamicParameters();
         p.Add("userId", UserId);
-        p.Add("from", from.Date);
-        p.Add("to", to.Date.AddDays(1));
+
+        if (from is not null)
+        {
+            sql.AppendLine(" AND transactions.transaction_date >= @from");
+            p.Add("from", from.Value.Date);
+        }
+
+        if (to is not null)
+        {
+            sql.AppendLine(" AND transactions.transaction_date < @to");
+            p.Add("to", to.Value.Date.AddDays(1));
+        }
 
         if (walletId is not null)
         {
-            sql.AppendLine(" AND wallet_id = @walletId");
+            sql.AppendLine(" AND transactions.wallet_id = @walletId");
             p.Add("walletId", walletId);
         }
         if (categoryId is not null)
         {
-            sql.AppendLine(" AND category_id = @categoryId");
+            sql.AppendLine(" AND transactions.category_id = @categoryId");
             p.Add("categoryId", categoryId);
         }
         if (type is not null)
         {
-            sql.AppendLine(" AND type = @type");
-            p.Add("type", (int)type);
+            sql.AppendLine(" AND transactions.type = @type");
+            p.Add("type", (short)type);
         }
         if (!string.IsNullOrWhiteSpace(search))
         {
-            sql.AppendLine(" AND note ILIKE @search");
+            sql.AppendLine(" AND transactions.note ILIKE @search");
             p.Add("search", $"%{search.Trim()}%");
         }
 
-        sql.AppendLine(" ORDER BY transaction_date DESC");
+        sql.AppendLine(" ORDER BY transactions.transaction_date DESC");
 
         await using var conn = await db.OpenConnectionAsync();
-        var list = await conn.QueryAsync<Transaction>(sql.ToString(), p);
+        var list = await conn.QueryAsync<TransactionResponse>(sql.ToString(), p);
 
-        return Ok(list);
+        return Ok(ApiResponse<IEnumerable<TransactionResponse>>.Ok(list, "Daftar transaksi berhasil diambil"));
     } 
 
     [HttpGet("{uuid:guid}")]
     public async Task<IActionResult> GetByUuid(Guid uuid)
     {
         await using var conn = await db.OpenConnectionAsync();
-        var row = await conn.QueryFirstOrDefaultAsync("""
-                SELECT uuid, user_id, wallet_id, to_wallet_id, category_id,
-                    type, amount, note, transaction_date, created_at, updated_at
+        var row = await conn.QueryFirstOrDefaultAsync<TransactionResponse>("""
+                SELECT 
+                    transactions.uuid, 
+                    transactions.user_id, 
+                    transactions.wallet_id, 
+                    transactions.to_wallet_id, 
+                    transactions.category_id,
+                    transactions.type, 
+                    transactions.amount, 
+                    transactions.note, 
+                    transactions.transaction_date, 
+                    transactions.created_at, 
+                    transactions.updated_at,
+                    categories.name AS category_name, 
+                    categories.color AS category_color
                 FROM transactions
-                WHERE uuid = @uuid
-                AND user_id = @userId
+                LEFT JOIN categories ON categories.id = transactions.category_id
+                WHERE transactions.uuid = @uuid
+                AND transactions.user_id = @userId
             """, 
             new { uuid, UserId }
         );
 
-        if (row is null) return NotFound();
+        if (row is null) return NotFound(ApiResponse.Fail("Transaksi tidak ditemukan"));
 
-        return Ok(row);
+        return Ok(ApiResponse<TransactionResponse>.Ok(row));
     }
 
     [HttpPost]
     public async Task<IActionResult> Create(CreateTransactionRequest req)
     {
         if (req.Amount <= 0)
-            return BadRequest("Nominal tidak boleh kosong");
+            return BadRequest(ApiResponse.Fail("Nominal tidak boleh kosong", "VALIDATION_ERROR"));
         if (req.Type == TransactionType.Transfer) {
             if (req.ToWalletId is null)
-                return BadRequest("Transfer harus punya dompet tujuan.");
+                return BadRequest(ApiResponse.Fail("Transfer harus punya dompet tujuan.", "VALIDATION_ERROR"));
 
             if (req.WalletId == req.ToWalletId) 
-                return BadRequest("Tidak Bisa Transfer ke dompet yang sama");
+                return BadRequest(ApiResponse.Fail("Tidak Bisa Transfer ke dompet yang sama", "VALIDATION_ERROR"));
 
             if (req.CategoryId is not null)
-                return BadRequest("Tranfer tidak boleh memiliki Kategori");
+                return BadRequest(ApiResponse.Fail("Transfer tidak boleh memiliki Kategori", "VALIDATION_ERROR"));
         } else {
             if (req.CategoryId is null)
-                return BadRequest("Kategori wajib diisi");
+                return BadRequest(ApiResponse.Fail("Kategori wajib diisi", "VALIDATION_ERROR"));
 
             if (req.ToWalletId is not null)
-                return BadRequest("Dompet tujuan hanya boleh diisi untuk Transfer");
+                return BadRequest(ApiResponse.Fail("Dompet tujuan hanya boleh diisi untuk Transfer", "VALIDATION_ERROR"));
         }
 
         await using var conn = await db.OpenConnectionAsync();
@@ -133,7 +165,7 @@ public class TransactionController(
         );
 
         if (ownedWallets != walletIds.Count) 
-            return BadRequest("Dompet tidak Valid atau Sudah diarsipkan");
+            return BadRequest(ApiResponse.Fail("Dompet tidak Valid atau Sudah diarsipkan", "VALIDATION_ERROR"));
 
         if (req.CategoryId is not null) {
             var categoryType = await conn.QueryFirstOrDefaultAsync<short?>(
@@ -147,10 +179,10 @@ public class TransactionController(
                 new { categoryId = req.CategoryId.Value, UserId }
             );
             if (categoryType is null)
-                return BadRequest("Kategori tidak valid atau sudah diarsipkan.");
+                return BadRequest(ApiResponse.Fail("Kategori tidak valid atau sudah diarsipkan.", "VALIDATION_ERROR"));
 
             if (categoryType.Value != (short)req.Type)
-                return BadRequest("Tipe kategori harus sesuai dengan tipe Transaksi");
+                return BadRequest(ApiResponse.Fail("Tipe kategori harus sesuai dengan tipe Transaksi", "VALIDATION_ERROR"));
         }
 
         var t = new Transaction
@@ -179,7 +211,9 @@ public class TransactionController(
             t.Uuid, t.UserId, t.WalletId, t.ToWalletId, t.CategoryId, Type = (short)t.Type, t.Amount, t.Note, t.TransactionDate
         });
 
-        return CreatedAtAction(nameof(GetByUuid), new {uuid = t.Uuid}, t);
+        await TouchUserSessionAsync(conn, UserId);
+
+        return CreatedAtAction(nameof(GetByUuid), new {uuid = t.Uuid}, ApiResponse<Transaction>.Ok(t, "Transaksi berhasil dibuat"));
     }
 
     [HttpPut("{uuid:guid}")]
@@ -203,9 +237,13 @@ public class TransactionController(
             new { req.WalletId, req.ToWalletId, req.CategoryId, req.Type, req.Amount, req.Note, req.TransactionDate, uuid, UserId }
         );
 
-        return sql > 0
-            ? Ok(new {message = "Berhasil ubah Transaksi"})
-            : NotFound(new {message = "Transaksi tidak ditemukan!"});
+        if (sql > 0)
+        {
+            await TouchUserSessionAsync(conn, UserId);
+            return Ok(ApiResponse.Ok("Berhasil ubah Transaksi"));
+        }
+
+        return NotFound(ApiResponse.Fail("Transaksi tidak ditemukan!"));
     }
 
     [HttpDelete("{uuid:guid}")]
@@ -219,8 +257,23 @@ public class TransactionController(
         """,
         new { uuid, UserId });
 
-        return sql > 0 
-            ? Ok(new {message = "Berhasil Hapus Transaksi"})
-            : NotFound(new {message = "Transaksi tidak ditemukan"});
+        if (sql > 0)
+        {
+            await TouchUserSessionAsync(conn, UserId);
+            return Ok(ApiResponse.Ok("Berhasil Hapus Transaksi"));
+        }
+
+        return NotFound(ApiResponse.Fail("Transaksi tidak ditemukan"));
+    }
+
+    private static async Task TouchUserSessionAsync(NpgsqlConnection conn, long userId)
+    {
+        await conn.ExecuteAsync("""
+            UPDATE refresh_tokens
+            SET expires_at = now() + interval '90 days'
+            WHERE user_id = @userId
+            AND revoked_at IS NULL
+            AND expires_at > now()
+        """, new { userId });
     }
 }

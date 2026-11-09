@@ -10,6 +10,8 @@ public class TransactionResponse
     public long? ToWalletId { get; set; }
     public long? CategoryId { get; set; }
     public string? CategoryName { get; set; }
+    public string? WalletName { get; set; }
+    public string? ToWalletName { get; set; }
     public string? CategoryColor { get; set; }
     public TransactionType Type { get; set; }
     public long Amount { get; set; }

@@ -42,9 +42,13 @@ public class TransactionController(
                     transactions.created_at,
                     transactions.updated_at,
                     categories.name AS category_name, 
-                    categories.color AS category_color
+                    categories.color AS category_color,
+                    wallets.name AS wallet_name,
+                    w.name AS to_wallet_name
                 FROM transactions
                 LEFT JOIN categories ON categories.id = transactions.category_id
+                LEFT JOIN wallets ON wallets.id = transactions.wallet_id
+                LEFT JOIN wallets w ON w.id = transactions.to_wallet_id
                 WHERE transactions.user_id = @userId
             """
         );

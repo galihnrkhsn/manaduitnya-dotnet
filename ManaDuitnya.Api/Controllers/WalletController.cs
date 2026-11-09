@@ -14,18 +14,42 @@ namespace ManaDuitnya.Api.Controllers;
 public class WalletController(NpgsqlDataSource db) : ControllerBase
 {
     private long UserId => User.GetUserId();
-    private const string SelectWallet = "SELECT id, user_id, name, initial_balance, archived_at, created_at, updated_at FROM wallets";
+
+    private const string SelectWalletWithBalance = """
+        SELECT
+            w.id,
+            w.user_id,
+            w.name,
+            w.initial_balance,
+            w.archived_at,
+            w.created_at,
+            w.updated_at,
+            w.initial_balance
+            + COALESCE(SUM(CASE WHEN t.type = 1 THEN t.amount ELSE 0 END), 0)
+            + COALESCE(SUM(CASE WHEN t.type = 3 AND t.to_wallet_id = w.id THEN t.amount ELSE 0 END), 0)
+            - COALESCE(SUM(CASE WHEN t.type = 2 THEN t.amount ELSE 0 END), 0)
+            - COALESCE(SUM(CASE WHEN t.type = 3 AND t.wallet_id = w.id THEN t.amount ELSE 0 END), 0)
+            AS balance
+        FROM wallets w
+        LEFT JOIN transactions t ON t.wallet_id = w.id OR t.to_wallet_id = w.id
+    """;
 
     [HttpGet]
     public async Task<IActionResult> List()
     {
         await using var conn = await db.OpenConnectionAsync();
-        var rows = await conn.QueryAsync(
-            $"{SelectWallet} WHERE archived_at IS NULL AND user_id = @UserId ORDER BY created_at desc",
+        var rows = await conn.QueryAsync<WalletResponse>(
+            $"""
+                {SelectWalletWithBalance}
+                WHERE w.archived_at IS NULL
+                AND w.user_id = @UserId
+                GROUP BY w.id
+                ORDER BY w.created_at DESC
+            """,
             new { UserId }
         );
 
-        return Ok(ApiResponse<IEnumerable<dynamic>>.Ok(rows, "Daftar dompet berhasil diambil"));
+        return Ok(ApiResponse<IEnumerable<WalletResponse>>.Ok(rows, "Daftar dompet berhasil diambil"));
     }
     
     [HttpPost]
@@ -56,10 +80,19 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
     public async Task<IActionResult> GetById(long id)
     {
         await using var conn = await db.OpenConnectionAsync();
-        var row = await conn.QuerySingleOrDefaultAsync($"{SelectWallet} WHERE id = @id AND user_id = @userId", new { id, UserId });
-        return row is null 
-            ? NotFound(ApiResponse.Fail("Dompet tidak ditemukan", "NOT_FOUND")) 
-            : Ok(ApiResponse<dynamic>.Ok(row, "Detail dompet berhasil diambil"));
+        var row = await conn.QuerySingleOrDefaultAsync<WalletResponse>(
+            $"""
+                {SelectWalletWithBalance}
+                WHERE w.id = @id
+                AND w.user_id = @UserId
+                GROUP BY w.id
+            """,
+            new { id, UserId }
+        );
+
+        return row is null
+            ? NotFound(ApiResponse.Fail("Dompet tidak ditemukan", "NOT_FOUND"))
+            : Ok(ApiResponse<WalletResponse>.Ok(row, "Detail dompet berhasil diambil"));
     }
 
     [HttpPut("{id:long}")]
@@ -68,7 +101,7 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
         var name = req.Name.Trim();
 
         await using var conn = await db.OpenConnectionAsync();
-        var row = await conn.ExecuteAsync ("""
+        var row = await conn.ExecuteAsync("""
             UPDATE wallets
             SET name = @name,
                 initial_balance = @InitialBalance
@@ -87,15 +120,18 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
     public async Task<IActionResult> GetArchived()
     {
         await using var conn = await db.OpenConnectionAsync();
-        var row = await conn.QueryAsync($"""
-            {SelectWallet} 
-            WHERE archived_at IS NOT NULL 
-            AND user_id = @UserId 
-            ORDER BY archived_at DESC
-        """,
-        new {UserId});
+        var row = await conn.QueryAsync<WalletResponse>(
+            $"""
+                {SelectWalletWithBalance}
+                WHERE w.archived_at IS NOT NULL
+                AND w.user_id = @UserId
+                GROUP BY w.id
+                ORDER BY w.archived_at DESC
+            """,
+            new { UserId }
+        );
 
-        return Ok(ApiResponse<IEnumerable<dynamic>>.Ok(row, "Daftar dompet terarsip berhasil diambil"));
+        return Ok(ApiResponse<IEnumerable<WalletResponse>>.Ok(row, "Daftar dompet terarsip berhasil diambil"));
     }
 
     [HttpDelete("{id:long}")]
@@ -127,7 +163,7 @@ public class WalletController(NpgsqlDataSource db) : ControllerBase
             SET archived_at = NULL
             WHERE id = @id
             AND user_id = @UserId
-        """, new {id, UserId});
+        """, new { id, UserId });
 
         return sql > 0
             ? Ok(ApiResponse.Ok("Dompet kembali aktif! Siap dikuras lagi."))
